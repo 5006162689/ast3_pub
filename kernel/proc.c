@@ -764,14 +764,61 @@ void printpgtable(pagetable_t pagetable) {
 void msgenroll(void)
 {
   //TODO: Please implement here
+  // Allocate 1 frame : kalloc()
+  // Store reference to the start of the frame. 
+  // Map to page table
+
+  struct proc *p = myproc();
+  void * frame = kalloc();
+
+  if (p == 0 || frame == 0) return;   // guard against allocation failure
+
+  memset(frame, 0, PGSIZE);           // zero out buffer
+
+  uint64 virtual_address = PGROUNDUP(p->sz);
+
+  // map page
+  if (mappages(p->pagetable, virtual_address, PGSIZE, (uint64)frame,
+              PTE_R | PTE_W | PTE_U) !=0) {
+                kfree(frame);
+                return;
+              }
+
+  // update variables
+  p->msg_virtual_address = virtual_address;
+  p->msg_physical_address = (uint64)frame;
+  p->sz = virtual_address + PGSIZE;
 }
 
 void msgsend(void* data, int size, int offset, int recipient)
 {
   //TODO: Please implement here
+  struct proc *p = myproc();                    // p = current process
+  struct proc *tp = 0;                           // tp = target process
+  // find recipient proc
+  for (struct proc *i = proc; i < &proc[NPROC]; i++) {
+    if(i->pid == recipient) {
+      tp = i;
+      break;
+    }
+  }
+  if (tp == 0 || tp->msg_physical_address == 0) return;
+  uint64 src = walkaddr(p->pagetable, (uint64)data);
+  if (src == 0) return;
+  src += (uint64)data & (PGSIZE - 1);
+  uint64 dst = tp->msg_physical_address + offset;
+  memmove((void*)dst, (void*)src, size);
 }
 
 void msgread(void* data_out, int size, int offset)
 {
   //TODO: Please implement here
+  struct proc *p = myproc();
+  if (p->msg_physical_address == 0) return;
+  uint64 src = p->msg_physical_address + offset;
+  uint64 dst = walkaddr(p->pagetable, (uint64)data_out);
+  if (dst == 0) return;
+  dst += (uint64)data_out & (PGSIZE - 1);
+
+  memmove((void*)dst, (void*)src, size);
 }
